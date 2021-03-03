@@ -5,7 +5,7 @@ The aim of this marketing project was to evaluate a clients search engine effect
 
 The result is a very facilitated search engine analysis, which leverages non-statistical techniques, such as Factorial Analyses etc. Furthermore, concerns with the given data and genelral case set-up are discussed in the Appendix of the report.
 
-Unfortunately, the data availability per sub-group is to low to build any sophisticated or advances models in order to classify strategies or to predict future ad ranks, CTR, CR or even ROI.
+Unfortunately, the data availability per sub-group is to low to build any sophisticated or advances models in order to classify strategies or to predict future ad ranks, CTR, CR or even ROAS.
 
 Samples from the Analysis 
 -------------------
