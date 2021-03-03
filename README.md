@@ -9,3 +9,11 @@ Samples from the Analysis
 -------------------
 
 ![](plots/05_visualcorrelation.png)
+
+![](plots/07_ROI+RevenueRelationship.png)
+
+![](plots/09_FactorialPlotCTR.png)
+
+![](plots/10_FactorialPlotROI.png)
+
+
