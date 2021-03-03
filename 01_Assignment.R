@@ -1,3 +1,4 @@
+# libraries 
 library(xlsx) # excel import
 library(dplyr) # data data preprocessing and data wrangling
 library(corrr) # simple correlation analysis
@@ -8,14 +9,12 @@ library(AlgDesign) # first stage interaction plot
 library(tidyverse) # advanced data wrangling
 
 # load the data 
-
 sdat <- read.xlsx("cloverleaf_search_data.xlsx", 
                   sheetIndex = 1, 
                   as.data.frame = T) %>% 
   mutate(ID = seq(1:nrow(.)))
 
 # transform to homogeneous date formats
-
 character_dates <- sdat %>% 
   filter(grepl("/", datestring)) %>% 
   mutate(date = as.Date(datestring, format = "%m/%d/%Y"))
@@ -24,6 +23,7 @@ numeric_dates <- sdat %>%
   filter(!grepl("/", datestring)) %>% 
   mutate(date = as.Date(as.numeric(datestring), origin = "1899-12-30"))
 
+# combine data sources
 sdat <- character_dates %>% 
   full_join(numeric_dates) %>% 
   arrange(ID) %>% 
@@ -31,14 +31,9 @@ sdat <- character_dates %>%
   relocate(date, .before = "advertID") %>% 
   mutate(id = seq(1:nrow(sdat)))
 
-# how to handle zeroes
-# assumption: zero impressions, clicks etc. are handled as ineffective campaigns with no result
-# consequence: they will be included and set to zero (for CTR, CR calculations)
 
-# GENERAL DATA OVERVIEW
-# TODO: Should I include a general data overview?
-# TODO: How to motivate a good Appendix part
-
+# ADVANCED PRE-PROCESSING
+# transform to long data format to facilitate comprehensive analysis
 sdat_longer <- sdat %>% 
   select_if(is.numeric) %>% 
   select(-advertID) %>% 
@@ -47,6 +42,7 @@ sdat_longer <- sdat %>%
     names_to = "variables",
     values_to = "value") 
 
+# check distribution for all variables
 sdat_longer %>% 
   ggplot(aes(value)) +
   stat_density() + 
@@ -59,6 +55,8 @@ sdat_longer %>%
 
 ggsave("01_app_variables.png", width = 8, height = 6)
 
+
+# check distribution for quality and rank variables
 sdat_longer %>% 
   filter(variables %in% c("adQuality", "landQuality", "adrank", "bidprice")) %>% 
   ggplot(aes(value)) +
@@ -74,13 +72,7 @@ sdat_longer %>%
 
 ggsave("02_app_variables.png", width = 8, height = 6)
 
-  
-# adranks should not include zeroes (no rank, meaning not a listed or sold ad)
-# bidprice of zero is strange because it indicates a free ad (if it is looked at from an individual POV)
-# --> check how bidproces are affected by campaign structure
-
-# adQuality and landQuality should also not include any zero values (seem to be wrong)
-
+# check distribution for clicks and impression
 sdat_longer %>% 
   filter(variables %in% c("clicks", "impressions")) %>% 
   ggplot(aes(value)) +
@@ -97,16 +89,6 @@ sdat_longer %>%
 
 ggsave("03_app_variables.png", width = 8, height = 6)
 
-# COMMONALITIES BETWEEN STANGE OUTLIERS ------
-
-sdat %>% 
-  filter(adrank == 0 | 
-           adQuality == 0 | landQuality == 0) %>% 
-  summarise(mean_clicks = mean(clicks),
-            mean_impressions = mean(impressions),
-            mean_adrank = mean(adrank))
-
-
 # TASK 1.1: CTR AND CR ANALYSIS
 # overall CTR and CR
 sdat <- sdat %>% 
@@ -121,47 +103,13 @@ sdat <- sdat %>%
 aj <- sdat %>% 
   filter(clicks == 0 & impressions == 0 | adrank == 0) 
 
+# delete data that may lead to bias
 sdat <- sdat %>% 
   anti_join(aj)
 
 metrics_mean <- sdat %>% 
   summarise(mean_CTR = mean(CTR),
             mean_CR = mean(CR))
-
-# BCGR: ID per different paid search ad campaign
-
-# 1) group per AdvertID ------
-
-sdat_advertID <- sdat %>% 
-  group_by(advertID) %>% 
-  summarise(mean_CTR = mean(CTR),
-            mean_CR = mean(CR))
-
-metrics_mean_advertID <- sdat_advertID %>% 
-  summarise(mean_CTR = mean(mean_CTR),
-            mean_CR = mean(mean_CR))
-
-p_mean_CTR <- sdat_advertID %>% 
-  ggplot() +
-  geom_histogram(aes(mean_CTR), fill = "royalblue") +
-  labs(x = "CTR",
-       y = "Count",
-       title = "Average CTR per Campaign") +
-  geom_vline(xintercept = metrics_mean_advertID[,"mean_CTR"],
-             size = 1) +
-  theme_minimal()
-
-p_mean_CR <- sdat_advertID %>% 
-  ggplot() +
-  geom_histogram(aes(mean_CR), fill = "orange4") +
-  labs(x = "CR",
-       y = "Count",
-       title = "Average CR per Campaign") +
-  geom_vline(xintercept = metrics_mean_advertID[,"mean_CR"],
-             size = 1) +
-  theme_minimal()
-
-p_mean_CTR / p_mean_CR
 
 # 2) no grouping at all ------
 
@@ -178,7 +126,7 @@ p_CTR <- sdat %>%
        y = "Count",
        colour = "Mean CTR",
        title = "Benchmark Cloverleaf CTR per Ad-Format vs. Google Search Average",
-       subtitle = "Strong concentration of ads with CTR until 20%, current ads perform better than the average",
+       subtitle = "Strong concentration of ads with CTR until 10%, current ads perform better than the average",
        caption = "Source: Cloverleaf Search Data & WordStream Benchmark (from 05.10.2020)") +
   theme_bw()
   
@@ -186,10 +134,10 @@ p_CTR <- sdat %>%
 p_CR <- sdat %>% 
   ggplot() +
   geom_histogram(aes(CR), fill = "orange2", bins = 100) +
-  geom_vline(aes(xintercept = metrics_mean[,"mean_CR"], color = "Cloverleaf"), size = 1) +
-  annotate(geom = "label", x = metrics_mean[[2]], y = 275.0, label = round(metrics_mean[[2]],2), colour = "#00BFC4") +
   geom_vline(aes(xintercept = 2.81, color = "Benchmark"),size = 1) +
   annotate(geom = "label", x = 2.81, y = 260, label = 2.81, colour = "#F8766D") +
+  geom_vline(aes(xintercept = metrics_mean[,"mean_CR"], color = "Cloverleaf"), size = 1) +
+  annotate(geom = "label", x = metrics_mean[[2]], y = 220.0, label = round(metrics_mean[[2]],2), colour = "#00BFC4") +
   
   labs(x = "CR [in percent]",
        y = "Count",
@@ -201,7 +149,7 @@ p_CR <- sdat %>%
 
 p_CTR / p_CR
 
-ggsave("04_hist.png", width = 9, height = 10)
+ggsave("04_hist.png", width = 9, height = 5)
 
 
 # TASK 1.2: CORRELATION COEFFICIENTS
@@ -213,7 +161,7 @@ p_corr_CTR <-
   geom_smooth(method = "loess", colour = "#00BFC4") +
   
   labs(title = "Correlation between CTR and Adrank",
-       subtitle = "The better (higher) the adrank, the higher the CTR",
+       subtitle = "The better the adrank, the higher the CTR",
        x = "Adrank",
        y = "Click-Through Rate (CTR)",
        caption = "Source: Cloverleaf Search Data (16.01.2012 to 03.12.2012)") +
@@ -227,16 +175,16 @@ p_corr_CR <-
   geom_smooth(method = "loess", colour = "#00BFC4") +
   
   labs(title = "Correlation between CR and Adrank",
-       subtitle = "No clear correlation indication based on the data for CR",
+       subtitle = "No clear correlation indication for CR",
        x = "Adrank",
        y = "Conversion Rate (CR)",
        caption = "Source: Cloverleaf Search Data (16.01.2012 to 03.12.2012)") + 
   coord_cartesian(ylim = c(-20,100)) +
   theme_bw()
 
-p_corr_CTR / p_corr_CR
+p_corr_CTR + p_corr_CR
 
-ggsave("05_visualcorrelation.png", width = 8, height = 6)
+ggsave("05_visualcorrelation.png", width = 8, height = 3)
 
 
 # compute actual spearman correlation coefficients
@@ -258,20 +206,10 @@ sdat %>%
   coord_cartesian(xlim = c(-1,1)) +
   theme_bw()
 
-ggsave("06_spearmancorrelation.png", width = 8, height = 6)
+ggsave("06_spearmancorrelation.png", width = 8, height = 3)
 
 
 # TASK 1.3: COMPUTE ROI
-
-# costs not part of profit margin
-sdat_roi_cost <- sdat %>% 
-  mutate(costs = bidprice * clicks,
-         profit = (revenue * 0.035) - costs,
-         roi = (profit/costs) * 100) %>%
-    filter(clicks > 0 & bidprice > 0) 
-
-sdat_roi_cost %>% 
-  summarise(mean(roi))
 
 # costs part of the profit margin
 sdat_roi <- sdat %>% 
@@ -283,8 +221,8 @@ sdat_roi <- sdat %>%
 metrics_roi <- sdat_roi %>% 
   summarise(mean(roi))
 
-# TODO: Analyze how many observations are thrown out (and by how much the average changes)
-# Do not think this is necessary, too many details. Many part of the Appendix
+# how many observations are deleted for ROI calculation 
+nrow(sdat) - nrow(sdat_roi)
 
 sdat_roi_summary <- sdat_roi %>% 
   group_by(advertID) %>%
@@ -302,7 +240,7 @@ sdat_roi_summary %>%
 # relationship between roi and revenue
 sdat_roi_summary %>% 
   ggplot(aes(sum_revenue, mean_roi)) +
-  geom_point() +
+  geom_point(alpha = .3) +
   geom_smooth(method = "loess", colour = "#00BFC4") +
   labs(title = "Relationship between ROI and Revenue (averaged by campaign)",
        subtitle = "Highest campaign ROIs were achieved on the lower end of the Revenue scale",
@@ -311,8 +249,10 @@ sdat_roi_summary %>%
        caption = "Source: Cloverleaf Search Data (16.01.2012 to 03.12.2012)") +
   theme_bw()
 
+ggsave("07_ROI+RevenueRelationship.png", width = 8, height = 4)
+
 # TASK 2.1: FACTORIAL PLOT FOR CR
-# FACTORIAL DESIGN APPROACH -----
+# FACTORIAL DESIGN APPROACH (NOT USED) -----
 
 sdat_factorial <- sdat %>% 
   select(CR, numberofwords, retailer) %>% 
@@ -320,7 +260,7 @@ sdat_factorial <- sdat %>%
   mutate(numberofwords = factor(numberofwords),
          retailer = factor(retailer)) 
 
-# ANOVA SPECIFIC MODELLING ------
+# ANOVA SPECIFIC MODELLING (NOT USED) ------
 
 interaction.plot(x.factor = sdat_factorial$numberofwords, 
                  trace.factor = sdat_factorial$retailer, 
@@ -332,8 +272,19 @@ interaction.plot(x.factor = sdat_factorial$numberofwords,
                  trace.label = "Ret. Name")
 
 
-# DPLYR BASED ATTEMPTS ------
+# DPLYR BASED INTERACTION PLOTS (USED) ------
 
+# observations per group (Appendix C)
+
+sdat %>% 
+  select(CR, numberofwords, retailer, id) %>% 
+  filter(numberofwords == 2 | numberofwords == 3) %>% 
+  mutate(numberofwords = factor(numberofwords),
+         retailer = factor(retailer)) %>% 
+  group_by(retailer, numberofwords) %>% 
+  count()
+
+# create summary statistics
 sdat %>% 
   select(CR, numberofwords, retailer) %>% 
   filter(numberofwords == 2 | numberofwords == 3) %>% 
@@ -347,7 +298,7 @@ sdat %>%
   geom_line(aes(group = retailer), size = 1) +
   
   geom_hline(aes(yintercept = metrics_mean[[2]]), linetype = "dashed", colour = "gray60") +
-  annotate(geom = "label", x = 0.6, y = 5.0, label = "Ã˜ CR", colour = "gray60") +
+  annotate(geom = "label", x = 0.6, y = 5.8, label = "Ø CR", colour = "gray60") +
   
   geom_label(vjust = -0.5) +
   geom_point(pch = 19) +
@@ -358,11 +309,26 @@ sdat %>%
        colour = "Retailer Name",
        caption = "Source: Cloverleaf Search Data (16.01.2012 to 03.12.2012)") +
   coord_cartesian(xlim = c(1,2),
-                  ylim = c(0,12)) +
+                  ylim = c(0,14)) +
   theme_bw()
+
+ggsave("08_FactorialPlotCR.png", width = 8, height = 4)
+
 
 # QUESTION 2.2: CTR BASED ON CASES (RETAILER NAME; BRAND; KEYWORD LENGTH)
 
+# observations per group (Appendix C)
+sdat %>% 
+  select(numberofwords, retailer, brandname, CTR) %>% 
+  filter(numberofwords == 2 | numberofwords == 3) %>% 
+  mutate(numberofwords = factor(numberofwords),
+         retailer = factor(retailer),
+         brandname = factor(brandname)) %>% 
+  group_by(retailer, brandname, numberofwords) %>%
+  count()
+
+
+# create summary statistics
 sdat %>% 
   select(numberofwords, retailer, brandname, CTR) %>% 
   filter(numberofwords == 2 | numberofwords == 3) %>% 
@@ -377,12 +343,12 @@ sdat %>%
     geom_line(aes(group = retailer), size = 1) +
     
     geom_hline(aes(yintercept = metrics_mean[[1]]), linetype = "dashed", colour = "gray60") +
-    annotate(geom = "label", x = 0.65, y = 12.0, label = "Ã˜ CTR", colour = "gray60") +
+    annotate(geom = "label", x = 0.65, y = 13.0, label = "Ø CTR", colour = "gray60") +
   
-    geom_label(vjust = -0.5)+
+    geom_label(vjust = -0.5, hjust = -0.3)+
     geom_point(pch = 19) +
-    labs(title = "Factorial Plot of CTR with 3 Factors (Retailer Name, Number of Keywords & Brand Name)",
-         subtitle = "Interaction Plots split by Brand Name \nEffect of Retailer Name in general positive, but strongly negative if Brand Name is included",
+    labs(title = "CTR Factorial Plot (split by Brand Name)",
+         subtitle = "Effect of Retailer Name in general positive, but strongly negative if Brand Name is included",
          x = "Number of Keywords",
          y = "Click-Through Rate",
          colour = "Retailer Name",
@@ -392,9 +358,22 @@ sdat %>%
                     ylim = c(0,45)) +
     theme_bw()
 
-# QUESTION 2.3: ROI BASED ON CASES (RETAILER NAME; BRAND; KEYWORD LENGTH)
-# TODO: Why just one observation for brand name = 0, retailer name = 1
+ggsave("09_FactorialPlotCTR.png", width = 8, height = 4)
 
+
+# QUESTION 2.3: ROI BASED ON CASES (RETAILER NAME; BRAND; KEYWORD LENGTH)
+
+# observations per group (Appendix C)
+sdat_roi %>% 
+  select(numberofwords, retailer, brandname, roi) %>% 
+  filter(numberofwords == 2 | numberofwords == 3) %>% 
+  mutate(numberofwords = factor(numberofwords),
+         retailer = factor(retailer),
+         brandname = factor(brandname)) %>% 
+  group_by(retailer, brandname, numberofwords) %>%
+  count()
+
+# summary statistics
 sdat_roi %>% 
   select(numberofwords, retailer, brandname, roi) %>% 
   filter(numberofwords == 2 | numberofwords == 3) %>% 
@@ -409,12 +388,17 @@ sdat_roi %>%
   geom_line(aes(group = retailer), size = 1) +
   
   geom_hline(aes(yintercept = metrics_roi[[1]]), linetype = "dashed", colour = "gray60") +
-  annotate(geom = "label", x = 0.65, y = 65.0, label = "Ã˜ ROI", colour = "gray60") +
+  annotate(geom = "label", x = 0.65, y = 75.0, label = "Ø ROI", colour = "gray60") +
+  
+  geom_hline(yintercept = 100, colour = "red4") +
+  annotate(geom = "label", x = 0.75, y = 130, label = "Breakeven", colour = "red4") +
   
   geom_label(position = position_dodge(width = 0.8, preserve = c("total"))) +
   geom_point(pch = 19) +
-  labs(title = "Factorial Plot of CTR with 3 Factors (Retailer Name, Number of Keywords & Brand Name)",
-       subtitle = "Interaction Plots split by Brand Name \nEffect of Retailer Name in general positive, but strongly negative if Brand Name is included",
+  
+  
+  labs(title = "ROI Factorial Plot (split by Brand Name)",
+       subtitle = "Effect of Retailer Name in general positive, but strongly negative if Brand Name is included",
        x = "Number of Keywords",
        y = "Click-Through Rate",
        colour = "Retailer Name",
@@ -422,6 +406,41 @@ sdat_roi %>%
   facet_wrap(~brandname) +
   theme_bw()
 
+ggsave("10_FactorialPlotROI.png", width = 8, height = 5)
+
+## APPENDIX ------
+
+# CHECKING IF SAME STRATEGY WOULD BE PROPOSED FOR CR WITH SAME SET-UP
+
+sdat %>% 
+  select(numberofwords, retailer, brandname, CR) %>% 
+  filter(numberofwords == 2 | numberofwords == 3) %>% 
+  mutate(numberofwords = factor(numberofwords),
+         retailer = factor(retailer),
+         brandname = factor(brandname)) %>% 
+  group_by(retailer, brandname, numberofwords) %>% 
+  summarise(mean_CR = round(mean(CR),1)) %>% 
+  
+  # to ggplot
+  ggplot(aes(numberofwords, mean_CR, colour = retailer, label = mean_CR)) +
+  geom_line(aes(group = retailer), size = 1) +
+  
+  geom_hline(aes(yintercept = metrics_mean[[2]]), linetype = "dashed", colour = "gray60") +
+  annotate(geom = "label", x = 0.65, y = 6.0, label = "Ø CR", colour = "gray60") +
+  
+  geom_label(vjust = -0.5, hjust = -0.3)+
+  geom_point(pch = 19) +
+  labs(title = "CTR Factorial Plot (split by Brand Name)",
+       subtitle = "Effect of Retailer Name in general positive, but strongly negative if Brand Name is included",
+       x = "Number of Keywords",
+       y = "Click-Through Rate",
+       colour = "Retailer Name",
+       caption = "Source: Cloverleaf Search Data (16.01.2012 to 03.12.2012)") +
+  facet_wrap(~brandname) +
+  coord_cartesian(xlim = c(1,2),
+                  ylim = c(0,20)) +
+  theme_bw()
 
 
+ggsave("11_FactorialPlotCR2.png", width = 8, height = 4)
 
